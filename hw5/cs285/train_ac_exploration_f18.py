@@ -536,18 +536,18 @@ def train_AC(
             if dm == 'ex2':
                 ### PROBLEM 3
                 ### YOUR CODE HERE
-                raise NotImplementedError
+                ll, kl, elbo = exploration.fit_density_model(ob_no)
             elif dm == 'hist' or dm == 'rbf':
                 ### PROBLEM 1
                 ### YOUR CODE HERE
-                raise NotImplementedError
+                exploration.fit_density_model(ob_no)
             else:
                 assert False
 
             # 2. Modify the reward
             ### PROBLEM 1
             ### YOUR CODE HERE
-            raise NotImplementedError
+            re_n = exploration.modify_reward(re_n, ob_no)
 
             print('average state', np.mean(ob_no, axis=0))
             print('average action', np.mean(ac_na, axis=0))
@@ -597,10 +597,10 @@ def main():
     from gym.envs.registration import register
     register(
         id='sparse-cheetah-cs285-v1',
-        entry_point='cs285.sparse_half_cheetah:HalfCheetahEnv',
+        entry_point='sparse_half_cheetah:HalfCheetahEnv',
         max_episode_steps=1000,
     )
-    from cs285.sparse_half_cheetah import HalfCheetahEnv
+    from sparse_half_cheetah import HalfCheetahEnv
 
     import argparse
     parser = argparse.ArgumentParser()

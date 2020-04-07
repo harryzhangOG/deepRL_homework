@@ -41,7 +41,9 @@ class ACAgent(BaseAgent):
             # HINT: Remember to cut off the V(s') term (ie set it to 0) at terminal states (ie terminal_n=1)
             # 4) calculate advantage (adv_n) as A(s, a) = Q(s, a) - V(s)
         
-        adv_n = TODO
+        v_s = self.sess.run([self.critic.critic_prediction], feed_dict = {self.critic.sy_ob_no: ob_no})[0]
+        v_sprime = self.sess.run([self.critic.critic_prediction], feed_dict = {self.critic.sy_ob_no: next_ob_no})[0]
+        adv_n = re_n + self.gamma * v_sprime * (1-terminal_n) - v_s
 
         if self.standardize_advantages:
             adv_n = (adv_n - np.mean(adv_n)) / (np.std(adv_n) + 1e-8)
@@ -58,11 +60,15 @@ class ACAgent(BaseAgent):
             # for agent_params['num_actor_updates_per_agent_update'] steps,
             #     update the actor
         
-        TODO
+        for _ in range(self.agent_params['num_critic_updates_per_agent_update']):
+            cr_loss = self.critic.update(ob_no, next_ob_no, re_n, terminal_n)
+        advantage = self.estimate_advantage(ob_no, next_ob_no, re_n, terminal_n)
+        for _ in range(self.agent_params['num_actor_updates_per_agent_update']):
+            ac_loss = self.actor.update(ob_no, ac_na, advantage)
 
         loss = OrderedDict()
-        loss['Critic_Loss'] = TODO  # put final critic loss here
-        loss['Actor_Loss'] = TODO  # put final actor loss here
+        loss['Critic_Loss'] = cr_loss  # put final critic loss here
+        loss['Actor_Loss'] = ac_loss  # put final actor loss here
         return loss
 
     def add_to_replay_buffer(self, paths):

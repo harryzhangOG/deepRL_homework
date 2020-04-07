@@ -37,7 +37,8 @@ class Histogram(Density_Model):
                 2. increment self.total by "increment" 
         """
         bin_name = self.preprocessor(state)
-        raise NotImplementedError
+        self.hist[bin_name] += increment
+        self.total += increment
 
     def get_count(self, states):
         """
@@ -55,7 +56,11 @@ class Histogram(Density_Model):
                     1. get the bin_name using self.preprocessor
                     2. get the value of self.hist with key bin_name
         """
-        raise NotImplementedError
+        counts = np.zeros(states.shape[0])
+        for i in range(states.shape[0]):
+            state = states[i]
+            bin_name = self.preprocessor(state)
+            counts[i] = self.hist[bin_name]
         return counts
 
     def get_prob(self, states):
@@ -72,7 +77,7 @@ class Histogram(Density_Model):
             NOTE:
                 remember to normalize by float(self.total)
         """
-        raise NotImplementedError
+        probs = self.get_count(states) / float(self.total)
         return probs
 
 class RBF(Density_Model):
@@ -99,8 +104,7 @@ class RBF(Density_Model):
                 self.means: np array (B, ob_dim)
         """
         B, ob_dim = len(data), len(data[0])
-        raise NotImplementedError
-        self.means = None
+        self.means = np.asarray(data)
         assert self.means.shape == (B, ob_dim)
 
     def get_prob(self, states):
@@ -139,19 +143,19 @@ class RBF(Density_Model):
             assert states.ndim == self.means.ndim and ob_dim == replay_dim
 
             # 1. Compute deltas
-            deltas = raise NotImplementedError
+            deltas = np.tile(states, (B,1,1)).swapaxes(0,1) - np.tile(self.means, (b,1,1))
             assert deltas.shape == (b, B, ob_dim)
 
             # 2. Euclidean distance
-            euc_dists = raise NotImplementedError
+            euc_dists = np.sum(np.square(deltas), axis=2)
             assert euc_dists.shape == (b, B)
 
             # Gaussian
-            gaussians = raise NotImplementedError
+            gaussians = np.exp(-euc_dists / (2 * (self.sigma**2)))
             assert gaussians.shape == (b, B)
 
             # 4. Average
-            densities = raise NotImplementedError
+            densities = np.mean(gaussians, axis=1)
             assert densities.shape == (b,)
 
             return densities
@@ -193,15 +197,13 @@ class Exemplar(Density_Model):
         self.encoder1, self.encoder2, self.prior, self.discriminator = self.forward_pass(self.state1, self.state2)
         self.discrim_target = tf.placeholder(shape=[None, 1], name="discrim_target", dtype=tf.float32)
 
-        raise NotImplementedError
-        self.log_likelihood = None
-        self.likelihood = None
-        self.kl = None
+        self.log_likelihood = tf.squeeze(self.discriminator.log_prob(self.discrim_target), axis = 1)
+        self.likelihood = tf.math.exp(self.log_likelihood)
+        self.kl =  tfp.distributions.kl_divergence(self.encoder1, self.prior) + tfp.distributions.kl_divergence(self.encoder2, self.prior)
         assert len(self.log_likelihood.shape) == len(self.likelihood.shape) == len(self.kl.shape) == 1
 
-        raise NotImplementedError
-        self.elbo = None
-        self.update_op = None
+        self.elbo = tf.reduce_mean(self.log_likelihood - self.kl * self.kl_weight)
+        self.update_op = tf.train.AdamOptimizer(self.learning_rate).minimize(-self.elbo)
 
     def define_placeholders(self):
         state1 = tf.placeholder(shape=[None, self.ob_dim], name="s1", dtype=tf.float32)
@@ -229,8 +231,8 @@ class Exemplar(Density_Model):
 
             Hint: use build_mlp
         """
-        z_mean = raise NotImplementedError
-        z_logstd = raise NotImplementedError
+        z_mean = build_mlp(state, z_size, scope, n_layers, hid_size)
+        z_logstd = tf.Variable(tf.zeros(z_size))
         return tfp.distributions.MultivariateNormalDiag(loc=z_mean, scale_diag=tf.exp(z_logstd))
 
     def make_prior(self, z_size):
@@ -245,8 +247,8 @@ class Exemplar(Density_Model):
                 prior_mean and prior_logstd are for a standard normal distribution
                     both have dimension z_size
         """
-        prior_mean = raise NotImplementedError
-        prior_logstd = raise NotImplementedError
+        prior_mean = np.zeros(int(z_size), dtype=np.float32)
+        prior_logstd = np.zeros(int(z_size), dtype=np.float32)
         return tfp.distributions.MultivariateNormalDiag(loc=prior_mean, scale_diag=tf.exp(prior_logstd))
 
     def make_discriminator(self, z, output_size, scope, n_layers, hid_size):
@@ -268,7 +270,7 @@ class Exemplar(Density_Model):
 
             Hint: use build_mlp
         """
-        logit = raise NotImplementedError
+        logit = build_mlp(z, output_size, scope, n_layers, hid_size)
         return tfp.distributions.Bernoulli(logit)
 
     def forward_pass(self, state1, state2):
@@ -306,9 +308,9 @@ class Exemplar(Density_Model):
         prior = self.make_prior(self.hid_dim/2)
 
         # Sampled Latent
-        z1 = raise NotImplementedError
-        z2 = raise NotImplementedError
-        z = raise NotImplementedError
+        z1 = encoder1.sample()
+        z2 = encoder2.sample()
+        z = tf.concat([z1, z2], axis = 1)
 
         # Discriminator
         discriminator = make_discriminator(z, 1, 'discriminator', n_layers=2, hid_size=self.hid_dim)
@@ -333,7 +335,7 @@ class Exemplar(Density_Model):
         assert state1.ndim == state2.ndim == target.ndim
         assert state1.shape[1] == state2.shape[1] == self.ob_dim
         assert state1.shape[0] == state2.shape[0] == target.shape[0]
-        raise NotImplementedError
+        _, ll, kl, elbo = self.sess.run([self.update_op, self.log_likelihood, self.kl, self.elbo], feed_dict={self.state1: state1, self.state2: state2, self.discrim_target: target})
         return ll, kl, elbo
 
     def get_likelihood(self, state1, state2):
@@ -354,7 +356,8 @@ class Exemplar(Density_Model):
         assert state1.ndim == state2.ndim
         assert state1.shape[1] == state2.shape[1] == self.ob_dim
         assert state1.shape[0] == state2.shape[0]
-        raise NotImplementedError
+        discrim_targ = np.ones((state1.shape[0], 1))
+        likelihood = self.sess.run([self.likelihood], feed_dict={self.state1: state1, self.state2: state2, self.discrim_target: discrim_targ})[0]
         return likelihood
 
     def get_prob(self, state):
@@ -372,8 +375,8 @@ class Exemplar(Density_Model):
                     compute the probability density of x from the discriminator
                     likelihood (see homework doc)
         """
-        likelihood = raise NotImplementedError
+        likelihood = self.get_likelihood(state, state)
         # avoid divide by 0 and log(0)
         likelihood = np.clip(np.squeeze(likelihood), 1e-5, 1-1e-5)
-        prob = raise NotImplementedError
+        prob = (1 - likelihood) / likelihood
         return prob

@@ -189,12 +189,36 @@ class RL_Trainer(object):
 
     def collect_training_trajectories(self, itr, load_initial_expertdata, collect_policy, batch_size):
         # TODO: GETTHIS from HW1
+        if (itr == 0) and load_initial_expertdata is not None:
+            with open(load_initial_expertdata, 'rb') as load:
+                loaded_paths = pickle.load(load)
+            return loaded_paths, 0, None
+        print("\nCollecting data to be used for training...")
+        paths, envsteps_this_batch = sample_trajectories(self.env, collect_policy, batch_size, self.params['ep_len'])
+        train_video_paths = None
+        if self.logvideo:
+            print('\nCollecting train rollouts to be used for saving videos...')
+            ## TODO look in utils and implement sample_n_trajectories
+            train_video_paths = sample_n_trajectories(self.env, collect_policy, MAX_NVIDEO, MAX_VIDEO_LEN, True)
+
+        return paths, envsteps_this_batch, train_video_paths
 
     def train_agent(self):
         # TODO: GETTHIS from HW1
+        all_losses = []
+        print('\nTraining agent using sampled data from replay buffer...')
+        for train_step in range(self.params['num_agent_train_steps_per_iter']):
+            ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = self.agent.sample(self.params['train_batch_size'])
+            all_losses.append(self.agent.train(ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch))
+        return all_losses
+
 
     def do_relabel_with_expert(self, expert_policy, paths):
         # TODO: GETTHIS from HW1 (although you don't actually need it for this homework)
+        for i in range(len(paths)):
+            path = paths[i]
+            path["action"] = expert_policy.get_action(path["observation"])
+        return paths
 
     ####################################
     ####################################
